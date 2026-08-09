@@ -1,0 +1,44 @@
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Environment variables / secrets
+.env
+.env.*
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Database
+*.sqlite3
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Large datasets
+data/
+datasets/
+
+# Model files
+*.pt
+*.pth
+*.bin
+*.safetensors
+
+# Node
+node_modules/
+dist/
+build/
