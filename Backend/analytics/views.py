@@ -103,9 +103,12 @@ class ReportView(APIView):
         profile = dataset.profile or {}
         dashboard_data = dashboard_service.build_dashboard(df, profile)
 
+        metric = request.data.get('metric')
+        horizon = int(request.data.get('horizon', 4))
+
         forecast_data = None
         try:
-            forecast_data = run_forecast(df, profile)
+            forecast_data = run_forecast(df, profile, metric=metric, horizon=horizon)
         except ForecastUnavailableError:
             forecast_data = None
 
@@ -120,4 +123,6 @@ class ReportView(APIView):
             'generatedAt': report.created_at.isoformat(),
             'pages': pages,
             'pdfUrl': report.pdf_file.url,
+            'metric': forecast_data['metric'] if forecast_data else None,
+            'horizon': horizon,
         }, status=status.HTTP_201_CREATED)

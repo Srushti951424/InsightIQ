@@ -3,32 +3,43 @@ import { useNavigate } from 'react-router-dom'
 import {
   ResponsiveContainer, ComposedChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts'
-import { ArrowLeft, ArrowRight, Gauge, RefreshCw } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Gauge, RefreshCw, AlertCircle } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import Button from '../components/Button'
 import Stamp from '../components/Stamp'
 import { runForecast } from '../lib/api'
 import { useAnalysis } from '../lib/AnalysisContext'
 
-const METRICS = ['Revenue', 'Orders', 'Return Rate']
-
 export default function PredictiveAnalysis() {
   const { dataset, dashboard, forecast, setForecast } = useAnalysis()
-  const [metric, setMetric] = useState('Revenue')
+  const [metric, setMetric] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const navigate = useNavigate()
+
+  // Real numeric columns detected in the uploaded dataset (from dashboard.metrics),
+  // not a hardcoded list — this dataset may not have "Revenue" or "Orders" at all.
+  const metrics = dashboard?.metrics?.length ? dashboard.metrics : (dashboard?.primaryMetric ? [dashboard.primaryMetric] : [])
 
   useEffect(() => {
     if (!dashboard) { navigate('/'); return }
-    if (!forecast) load('Revenue')
+    const initial = dashboard.primaryMetric || metrics[0]
+    if (initial) setMetric(initial)
+    if (!forecast && initial) load(initial)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboard])
 
   const load = async (m) => {
     setLoading(true)
-    const result = await runForecast(dataset?.datasetId, { metric: m })
-    setForecast(result)
-    setLoading(false)
+    setError('')
+    try {
+      const result = await runForecast(dataset?.datasetId, { metric: m })
+      setForecast(result)
+    } catch (err) {
+      setError(err.message || 'Could not run the forecast. This metric may not have enough history.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (!dashboard) return null
@@ -56,39 +67,49 @@ export default function PredictiveAnalysis() {
             <p className="eyebrow">Predictive analysis</p>
             <h1 className="mt-1 font-display text-3xl tracking-tight">What happens next</h1>
             <p className="mt-1 max-w-lg text-sm leading-relaxed text-slate">
-              Forecasts are generated from your historical data using an auto-tuned time-series model.
-              Confidence bands widen with distance — treat far-out months as directional, not exact.
+              Forecasts are generated from your historical data using an auto-tuned time-series model
+              (Holt-Winters exponential smoothing, falling back to a linear trend for shorter histories).
+              Confidence bands widen with distance — treat far-out periods as directional, not exact.
             </p>
           </div>
           {forecast && <Stamp tone="signal" size="lg" animate>Forecasted</Stamp>}
         </div>
 
-        <div className="mt-6 flex flex-wrap items-center gap-2">
-          {METRICS.map((m) => (
+        {error && (
+          <div className="mt-4 flex items-start gap-2 border border-red-300 bg-red-50 p-3 text-sm text-red-700">
+            <AlertCircle size={16} className="mt-0.5 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {metrics.length > 0 && (
+          <div className="mt-6 flex flex-wrap items-center gap-2">
+            {metrics.map((m) => (
+              <button
+                key={m}
+                onClick={() => { setMetric(m); load(m) }}
+                disabled={loading}
+                className={`rounded-full border px-3.5 py-1.5 font-mono text-xs transition-colors ${
+                  metric === m ? 'border-ink bg-ink text-paper' : 'border-ink/20 text-slate hover:border-ink/50'
+                }`}
+              >
+                {m}
+              </button>
+            ))}
             <button
-              key={m}
-              onClick={() => { setMetric(m); load(m) }}
+              onClick={() => load(metric)}
               disabled={loading}
-              className={`rounded-full border px-3.5 py-1.5 font-mono text-xs transition-colors ${
-                metric === m ? 'border-ink bg-ink text-paper' : 'border-ink/20 text-slate hover:border-ink/50'
-              }`}
+              className="ml-auto flex items-center gap-1.5 font-mono text-xs text-slate hover:text-ink disabled:opacity-40"
             >
-              {m}
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> re-run
             </button>
-          ))}
-          <button
-            onClick={() => load(metric)}
-            disabled={loading}
-            className="ml-auto flex items-center gap-1.5 font-mono text-xs text-slate hover:text-ink disabled:opacity-40"
-          >
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> re-run
-          </button>
-        </div>
+          </div>
+        )}
 
         <div className="ledger-rule mt-4 bg-white/60 p-5 pt-6">
           {loading || !forecast ? (
             <div className="flex h-72 items-center justify-center font-mono text-xs text-slate">
-              Running forecast model…
+              {loading ? 'Running forecast model…' : 'No forecast yet.'}
             </div>
           ) : (
             <>
@@ -128,7 +149,7 @@ export default function PredictiveAnalysis() {
             <div className="ledger-rule bg-white/60 p-5 pt-6 md:col-span-2">
               <p className="eyebrow">What's driving this forecast</p>
               <ul className="mt-3 space-y-2">
-                {forecast.drivers.map((d, i) => (
+                {(forecast.drivers || []).map((d, i) => (
                   <li key={i} className="border-l-2 border-current pl-3 text-sm leading-relaxed text-ink/90">{d}</li>
                 ))}
               </ul>

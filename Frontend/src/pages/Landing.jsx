@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowRight, ScanLine } from 'lucide-react'
+import { ArrowRight, ScanLine, AlertCircle } from 'lucide-react'
 import Navbar from '../components/Navbar'
 import FileDropzone from '../components/FileDropzone'
 import Button from '../components/Button'
@@ -18,19 +18,48 @@ export default function Landing() {
   const [files, setFiles] = useState([])
   const [status, setStatus] = useState('idle') // idle | working | done
   const [progress, setProgress] = useState(0)
+  const [error, setError] = useState('')
   const navigate = useNavigate()
   const { setDataset, setDashboard } = useAnalysis()
 
   const handleAnalyze = async () => {
     if (!files.length) return
     setStatus('working')
-    setProgress(0)
-    const summary = await uploadDatasets(files, setProgress)
-    setDataset(summary)
-    const dash = await fetchDashboard(summary.datasetId)
-    setDashboard(dash)
-    setStatus('done')
-    navigate('/dashboard')
+    setError('')
+    setProgress(5)
+
+    // Large files (100k+ rows) can take a while to ingest and clean server-side.
+    // Since the real upload only reports 0% -> 100% (no granular progress from
+    // the server), animate a slow crawl up to 90% so the bar never looks frozen,
+    // then jump to 100% once the response actually arrives.
+    const crawl = setInterval(() => {
+      setProgress((p) => (p < 90 ? p + 1 : p))
+    }, 400)
+
+    try {
+      const summary = await uploadDatasets(files, () => {})
+      if (!summary?.datasetId) {
+        throw new Error('The server did not return a dataset ID. Check the backend terminal for errors.')
+      }
+      setDataset(summary)
+      setProgress(95)
+      const dash = await fetchDashboard(summary.datasetId)
+      setDashboard(dash)
+      setProgress(100)
+      setStatus('done')
+      navigate('/dashboard')
+    } catch (err) {
+      clearInterval(crawl)
+      setStatus('idle')
+      setProgress(0)
+      setError(
+        err.message?.includes('Failed to fetch')
+          ? 'Could not reach the backend. Make sure "python manage.py runserver" is running on port 8000.'
+          : (err.message || 'Something went wrong while analyzing your file.')
+      )
+    } finally {
+      clearInterval(crawl)
+    }
   }
 
   return (
@@ -75,6 +104,13 @@ export default function Landing() {
 
             <FileDropzone files={files} onFilesChange={setFiles} />
 
+            {error && (
+              <div className="mt-4 flex items-start gap-2 border border-red-400/40 bg-red-500/10 p-3 text-sm text-red-300">
+                <AlertCircle size={16} className="mt-0.5 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+
             {status === 'working' && (
               <div className="mt-5">
                 <div className="h-1 w-full overflow-hidden rounded-full bg-paper/10">
@@ -84,7 +120,8 @@ export default function Landing() {
                   />
                 </div>
                 <p className="mt-2 font-mono text-xs text-slatelight">
-                  {progress < 40 ? 'Reading files…' : progress < 80 ? 'Profiling columns & cleaning data…' : 'Building your dashboard…'}
+                  {progress < 40 ? 'Reading & cleaning files…' : progress < 90 ? 'Profiling columns & building dashboard…' : 'Almost done…'}
+                  {' '}Large files can take up to a minute.
                 </p>
               </div>
             )}
@@ -113,3 +150,4 @@ export default function Landing() {
     </div>
   )
 }
+
