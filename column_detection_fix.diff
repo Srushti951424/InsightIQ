@@ -1,0 +1,63 @@
+diff --git a/Backend/analytics/services/column_detection.py b/Backend/analytics/services/column_detection.py
+index e93a98d..b1815a5 100644
+--- a/Backend/analytics/services/column_detection.py
++++ b/Backend/analytics/services/column_detection.py
+@@ -19,6 +19,26 @@ import pandas as pd
+ 
+ ID_NAME_RE = re.compile(r'(^id$|_id$|^id_|uuid|guid|^index$|^unnamed)', re.I)
+ 
++# Whole-word tokens that mark a column as an identifier rather than a metric,
++# even when the column name doesn't literally contain "id" (e.g. "InvoiceNo",
++# "StockCode", "Postal Code"). Matched against tokenized words, not substrings,
++# so this doesn't accidentally catch things like "Score" or "Encode".
++ID_NAME_TOKENS = {'id', 'no', 'num', 'number', 'code', 'key', 'uuid', 'guid', 'index'}
++
++
++def _tokenize_name(col_name):
++    # Split CamelCase boundaries and any non-alphanumeric separator
++    # ("InvoiceNo" -> ["Invoice", "No"], "postal_code" -> ["postal", "code"]).
++    spaced = re.sub(r'(?<=[a-z0-9])(?=[A-Z])', ' ', str(col_name))
++    return [t.lower() for t in re.split(r'[^0-9a-zA-Z]+', spaced) if t]
++
++
++def _is_id_name(col_name):
++    if ID_NAME_RE.search(col_name):
++        return True
++    tokens = _tokenize_name(col_name)
++    return bool(tokens) and tokens[-1] in ID_NAME_TOKENS
++
+ METRIC_NAME_HINTS = [
+     'revenue', 'sales', 'amount', 'total', 'price', 'value', 'income',
+     'profit', 'cost', 'spend', 'qty', 'quantity', 'units', 'volume',
+@@ -73,7 +93,7 @@ def detect_columns(df: pd.DataFrame) -> dict:
+         series = df[col]
+         unique_ratio = series.nunique(dropna=True) / n if n else 0
+         null_pct = round(series.isna().mean() * 100, 2)
+-        is_id_name = bool(ID_NAME_RE.search(col))
++        is_id_name = _is_id_name(col)
+ 
+         # --- numeric? ---
+         numeric_series = pd.to_numeric(series, errors='coerce')
+@@ -142,17 +162,17 @@ def detect_columns(df: pd.DataFrame) -> dict:
+     categorical_candidates.sort(key=lambda c: (c['name_score_category'], -c['cardinality']), reverse=True)
+     category_col = categorical_candidates[0]['name'] if categorical_candidates else None
+ 
++    # Only assign a region column when a candidate genuinely hints at
++    # location (name match against REGION_NAME_HINTS). Previously this fell
++    # back to "any other categorical column" when no hint matched, which
++    # could label something like a product SKU column as a "region" -
++    # better to omit the byRegion breakdown than fabricate one.
+     region_ranked = sorted(categorical_candidates, key=lambda c: (c['name_score_region'], -c['cardinality']), reverse=True)
+     region_col = None
+     for c in region_ranked:
+         if c['name'] != category_col and c['name_score_region'] > 0:
+             region_col = c['name']
+             break
+-    if region_col is None:
+-        for c in categorical_candidates:
+-            if c['name'] != category_col:
+-                region_col = c['name']
+-                break
+ 
+     return {
+         'columns': columns,
