@@ -14,7 +14,7 @@ import {
   mockReport,
 } from './mockData'
 
-const USE_MOCKS = true // flip to false once your Django endpoints are live
+const USE_MOCKS = false // flip to false once your Django endpoints are live
 const BASE_URL = '/api'
 
 async function request(path, options = {}) {
@@ -39,9 +39,9 @@ export async function uploadDatasets(files, onProgress) {
     }
     return mockDatasetSummary(files)
   }
-  // const form = new FormData()
-  // files.forEach((f) => form.append('files', f))
-  // return request('/datasets/upload/', { method: 'POST', body: form, headers: {} })
+   const form = new FormData()
+   files.forEach((f) => form.append('files', f))
+   return request('/datasets/upload/', { method: 'POST', body: form, headers: {} })
 }
 
 // GET /api/datasets/:id/dashboard/
@@ -50,7 +50,7 @@ export async function fetchDashboard(datasetId) {
     await delay(600)
     return mockDashboard
   }
-  // return request(`/datasets/${datasetId}/dashboard/`)
+   return request(`/datasets/${datasetId}/dashboard/`)
 }
 
 // POST /api/datasets/:id/forecast/  { metric, horizon }
@@ -59,10 +59,10 @@ export async function runForecast(datasetId, params) {
     await delay(900)
     return mockForecast(params)
   }
-  // return request(`/datasets/${datasetId}/forecast/`, {
-  //   method: 'POST',
-  //   body: JSON.stringify(params),
-  // })
+   return request(`/datasets/${datasetId}/forecast/`, {
+     method: 'POST',
+     body: JSON.stringify(params),
+   })
 }
 
 // POST /api/datasets/:id/report/  — generates and returns a report record
@@ -72,5 +72,5 @@ export async function generateReport(datasetId) {
     await delay(1100)
     return mockReport
   }
-  // return request(`/datasets/${datasetId}/report/`, { method: 'POST' })
+   return request(`/datasets/${datasetId}/report/`, { method: 'POST' })
 }
